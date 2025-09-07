@@ -1,0 +1,50 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Push Exporter</title>
+  <link rel="manifest" href="/manifest.json">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+</head>
+<body>
+  <h1>Export Push Subscription</h1>
+  <button id="btn">Export subscription.json</button>
+
+  <script>
+  const VAPID_PUBLIC_KEY = "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEJyHVfgDiM5Pkjj/cTiEmjEv0l/flhKBChmZ1zXZlS8NXLyUNbP4TF0K3fKar/CCr7mLnHnuVMf/aE3OISnaAsQ==";
+
+  function urlBase64ToUint8Array(base64String) {
+    const padding = '='.repeat((4 - (base64String.length % 4)) % 4);
+    const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
+    const raw = atob(base64);
+    const output = new Uint8Array(raw.length);
+    for (let i=0; i<raw.length; ++i) output[i] = raw.charCodeAt(i);
+    return output;
+  }
+
+  async function exportSub() {
+    if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
+      alert('Push not supported here'); return;
+    }
+
+    const reg = await navigator.serviceWorker.register('/sw.js'); // scope = /
+    const perm = await Notification.requestPermission();
+    if (perm !== 'granted') { alert('Permission denied'); return; }
+
+    const sub = await reg.pushManager.subscribe({
+      userVisibleOnly: true,
+      applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY)
+    });
+
+    const blob = new Blob([JSON.stringify(sub)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = 'subscription.json'; a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  document.getElementById('btn').addEventListener('click', exportSub);
+  </script>
+</body>
+</html>
