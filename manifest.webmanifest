@@ -1,7 +1,7 @@
 {
   "name": "iOS Web Push PWA",
   "short_name": "Push PWA",
-  "start_url": "/",
+  "start_url": "/pushserver",
   "display": "standalone",
   "background_color": "#ffffff",
   "theme_color": "#0ea5e9",
