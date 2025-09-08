@@ -73,7 +73,7 @@ btnClearKey.addEventListener('click', () => {
 async function registerSW() {
   if (!('serviceWorker' in navigator)) { $status.sw.textContent = 'Service workers not supported'; return null; }
   try {
-    const reg = await navigator.serviceWorker.register('/service-worker.js');
+    const reg = await navigator.serviceWorker.register('service-worker.js');
     $status.sw.innerHTML = '<span class="ok">registered</span>';
     return reg;
   } catch (err) {
