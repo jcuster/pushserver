@@ -131,7 +131,7 @@ btnSubscribe.addEventListener('click', async () => {
     $status.perm.textContent = 'Subscribed';
   } catch (e) {
     console.error(e);
-    $status.perm.textContent = 'Subscribe failed (ensure installed on iOS & permission granted)';
+    $status.perm.textContent = 'Subscribe failed (ensure installed on iOS & permission granted): ' + e;
   }
 });
 
