@@ -105,6 +105,7 @@ btnSubscribe.addEventListener('click', async () => {
     const reg = await getRegistration();
     if (!reg) return;
 
+    console.log('vapid key' + vapid)
     const sub = await reg.pushManager.subscribe({
       userVisibleOnly: true,
       applicationServerKey: vapid
