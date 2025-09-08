@@ -1,50 +1,118 @@
 <!doctype html>
-<html>
+<html lang="en">
 <head>
   <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>Push Exporter</title>
-  <link rel="manifest" href="/manifest.json">
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>iOS Web Push PWA Starter</title>
+  <link rel="manifest" href="./manifest.webmanifest" />
   <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="apple-mobile-web-app-title" content="Push PWA" />
+  <!-- Basic inline styles for clarity -->
+  <style>
+    :root { color-scheme: light dark; }
+    body { font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, "Helvetica Neue", Arial, "Apple Color Emoji"; margin: 0; }
+    header { padding: 1rem 1rem 0.5rem; border-bottom: 1px solid rgba(0,0,0,.1); position: sticky; top: 0; background: rgba(255,255,255,0.8); backdrop-filter: blur(8px); }
+    main { padding: 1rem; max-width: 800px; margin: 0 auto; }
+    .card { border: 1px solid rgba(0,0,0,.1); border-radius: 12px; padding: 1rem; margin-bottom: 1rem; box-shadow: 0 1px 6px rgba(0,0,0,.06); }
+    label { font-weight: 600; display: block; margin-bottom: 0.25rem; }
+    input[type="text"] { width: 100%; padding: .65rem .75rem; border-radius: 10px; border: 1px solid rgba(0,0,0,.15); font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+    button { appearance: none; border: none; border-radius: 9999px; padding: .7rem 1rem; font-weight: 600; box-shadow: 0 1px 6px rgba(0,0,0,.08); cursor: pointer; }
+    button.primary { background: #0ea5e9; color: white; }
+    button.secondary { background: #e5e7eb; color: #111827; }
+    button:disabled { opacity: .6; cursor: not-allowed; }
+    .row { display: flex; flex-wrap: wrap; gap: .5rem; align-items: center; }
+    .muted { color: #6b7280; font-size: .9rem; }
+    pre { background: rgba(0,0,0,.05); padding: .75rem; border-radius: 10px; overflow: auto; }
+    code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.95rem; }
+    .grid { display: grid; grid-template-columns: 1fr; gap: 1rem; }
+    @media (min-width: 720px){ .grid { grid-template-columns: 1fr 1fr; } }
+    .copy { font-size: .8rem; }
+    .ok { color: #16a34a; font-weight: 700; }
+    .err { color: #dc2626; font-weight: 700; }
+  </style>
 </head>
 <body>
-  <h1>Export Push Subscription</h1>
-  <button id="btn">Export subscription.json</button>
+  <header>
+    <h1>iOS Web Push PWA</h1>
+    <p class="muted">Install to Home Screen → open the app → then enable push.</p>
+  </header>
 
-  <script>
-  const VAPID_PUBLIC_KEY = "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEJyHVfgDiM5Pkjj/cTiEmjEv0l/flhKBChmZ1zXZlS8NXLyUNbP4TF0K3fKar/CCr7mLnHnuVMf/aE3OISnaAsQ==";
+  <main>
+    <section class="card">
+      <h2>1) Service Worker & Installability</h2>
+      <div class="grid">
+        <div>
+          <p>Status: <span id="sw-status" class="muted">checking…</span></p>
+          <div class="row">
+            <button id="btn-register" class="secondary">Register Service Worker</button>
+            <button id="btn-unregister" class="secondary">Unregister</button>
+          </div>
+        </div>
+        <div>
+          <p>Install status: <span id="install-status" class="muted">not checked</span></p>
+          <p class="muted">On iOS, you must <strong>Add to Home Screen</strong> first.</p>
+        </div>
+      </div>
+    </section>
 
-  function urlBase64ToUint8Array(base64String) {
-    const padding = '='.repeat((4 - (base64String.length % 4)) % 4);
-    const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
-    const raw = atob(base64);
-    const output = new Uint8Array(raw.length);
-    for (let i=0; i<raw.length; ++i) output[i] = raw.charCodeAt(i);
-    return output;
-  }
+    <section class="card">
+      <h2>2) VAPID Public Key</h2>
+      <p class="muted">Enter your <code>VAPID</code> public key (Base64URL) from your push server (e.g., generated via web-push library). Stored locally.</p>
+      <label for="vapid">VAPID public key (Base64URL)</label>
+      <input type="text" id="vapid" placeholder="BOrN…your_base64url_key…xY" />
+      <div class="row" style="margin-top:.5rem;">
+        <button id="btn-save-key" class="secondary">Save Key</button>
+        <button id="btn-clear-key" class="secondary">Clear</button>
+        <span id="key-status" class="muted"></span>
+      </div>
+    </section>
 
-  async function exportSub() {
-    if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
-      alert('Push not supported here'); return;
-    }
+    <section class="card">
+      <h2>3) Request Permission & Subscribe</h2>
+      <div class="row">
+        <button id="btn-permission" class="primary">Request Notification Permission</button>
+        <button id="btn-subscribe" class="primary">Enable Push</button>
+        <button id="btn-unsubscribe" class="secondary">Disable Push</button>
+      </div>
+      <p id="perm-status" class="muted"></p>
+    </section>
 
-    const reg = await navigator.serviceWorker.register('/sw.js'); // scope = /
-    const perm = await Notification.requestPermission();
-    if (perm !== 'granted') { alert('Permission denied'); return; }
+    <section class="card">
+      <h2>4) Subscription Details (copy/paste to your push server)</h2>
+      <div class="grid">
+        <div>
+          <label>Endpoint URL</label>
+          <pre><code id="out-endpoint">—</code></pre>
+          <button data-copy="#out-endpoint" class="copy secondary">Copy endpoint</button>
+        </div>
+        <div>
+          <label>p256dh</label>
+          <pre><code id="out-p256dh">—</code></pre>
+          <button data-copy="#out-p256dh" class="copy secondary">Copy p256dh</button>
+        </div>
+        <div>
+          <label>auth</label>
+          <pre><code id="out-auth">—</code></pre>
+          <button data-copy="#out-auth" class="copy secondary">Copy auth</button>
+        </div>
+        <div>
+          <label>Full JSON (Web Push)</label>
+          <pre><code id="out-json">{}</code></pre>
+          <button data-copy="#out-json" class="copy secondary">Copy JSON</button>
+        </div>
+      </div>
+    </section>
 
-    const sub = await reg.pushManager.subscribe({
-      userVisibleOnly: true,
-      applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY)
-    });
+    <section class="card">
+      <h2>5) Test Local Notification</h2>
+      <p class="muted">This shows a notification via the service worker (no push). Good for verifying UI permissions.</p>
+      <div class="row">
+        <button id="btn-test-notification" class="secondary">Show Test Notification</button>
+      </div>
+    </section>
+  </main>
 
-    const blob = new Blob([JSON.stringify(sub)], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url; a.download = 'subscription.json'; a.click();
-    URL.revokeObjectURL(url);
-  }
-
-  document.getElementById('btn').addEventListener('click', exportSub);
-  </script>
+  <script src="./app.js" type="module"></script>
 </body>
 </html>
