@@ -23,23 +23,6 @@ const btnClearKey = qs('#btn-clear-key');
 const inputVapid = qs('#vapid');
 
 // Helpers
-const base64urlToUint8Array = (base64url) => {
-  const padding = '='.repeat((4 - (base64url.length % 4)) % 4);
-  const base64 = (base64url + padding).replaceAll('-', '+').replaceAll('_', '/');
-  const raw = atob(base64);
-  const output = new Uint8Array(raw.length);
-  for (let i = 0; i < raw.length; ++i) output[i] = raw.charCodeAt(i);
-  return output;
-};
-
-const arrayBufferToBase64url = (buf) => {
-  const bytes = new Uint8Array(buf);
-  let binary = '';
-  for (let i = 0; i < bytes.byteLength; i++) binary += String.fromCharCode(bytes[i]);
-  const base64 = btoa(binary).replaceAll('+', '-').replaceAll('/', '_').replace(/=+$/, '');
-  return base64;
-};
-
 const show = (el, value) => { el.textContent = value ?? '—'; };
 const copyFrom = (selector) => {
   const el = qs(selector);
@@ -124,7 +107,7 @@ btnSubscribe.addEventListener('click', async () => {
 
     const sub = await reg.pushManager.subscribe({
       userVisibleOnly: true,
-      applicationServerKey: base64urlToUint8Array(vapid)
+      applicationServerKey: vapid
     });
 
     await renderSubscription(sub);
@@ -160,18 +143,7 @@ async function renderSubscription(sub) {
   }
   if (!sub) return;
 
-  const endpoint = sub.endpoint;
-  const p256dh = arrayBufferToBase64url(sub.getKey('p256dh'));
-  const auth = arrayBufferToBase64url(sub.getKey('auth'));
-
-  show($out.endpoint, endpoint);
-  show($out.p256dh, p256dh);
-  show($out.auth, auth);
-
-  const json = {
-    endpoint,
-    keys: { p256dh, auth }
-  };
+  const json = sub.toJSON();
   show($out.json, JSON.stringify(json, null, 2));
 }
 
