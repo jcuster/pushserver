@@ -49,6 +49,10 @@ async function decryptE2EEEnvelope(env) {
   const recipientPriv = await crypto.subtle.importKey(
     'jwk', kp.privateJwk, { name: 'ECDH', namedCurve: 'P-256' }, false, ['deriveBits']
   );
+
+  // Quick sanity check
+  if (!kp?.privateJwk?.d) console.warn('[E2EE] private JWK missing "d"');
+
   const senderPub = await crypto.subtle.importKey(
     'raw', b64uToBuf(env.epk), { name: 'ECDH', namedCurve: 'P-256' }, false, []
   );
@@ -63,6 +67,11 @@ async function decryptE2EEEnvelope(env) {
     { name: 'AES-GCM', length: 256 },
     false,
     ['decrypt']
+  );
+  const rawKey = await crypto.subtle.exportKey('raw', aesKey);
+  const hash = await crypto.subtle.digest('SHA-256', rawKey);
+  console.log('[E2EE] key sha256 (first 8 bytes b64u):',
+    btoa(String.fromCharCode(...new Uint8Array(hash).slice(0,8))).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'')
   );
   const pt = await crypto.subtle.decrypt(
     { name: 'AES-GCM', iv: b64uToBuf(env.iv) },
@@ -89,6 +98,7 @@ self.addEventListener('push', (event) => {
         if (inner) data = inner;
       } catch (e) {
         // If decryption fails, fall back to a minimal notification that surfaces the error.
+        console.error('[E2EE] decrypt failed:', e, { haveEpk: !!data.e2ee?.epk, haveIv: !!data.e2ee?.iv, haveSalt: !!data.e2ee?.salt, haveCt: !!data.e2ee?.ct });
         data = { title: 'Encrypted message', body: 'Unable to decrypt on device.' };
       }
     }
