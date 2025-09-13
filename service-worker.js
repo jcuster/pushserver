@@ -126,6 +126,7 @@ async function decryptE2EEEnvelope(env) {
     aesKey,
     b64uToBuf(env.ct)
   );
+  console.log(pt)
   return JSON.parse(new TextDecoder().decode(pt));
 }
 
