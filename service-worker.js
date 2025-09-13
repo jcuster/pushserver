@@ -101,7 +101,7 @@ async function decryptE2EEEnvelope(env) {
     { name: 'HKDF', hash: 'SHA-256', salt: b64uToBuf(env.salt), info: new Uint8Array([]) },
     hkdfBase,
     { name: 'AES-GCM', length: 256 },
-    false,
+    true,
     ['decrypt']
   );
   console.log('[E2EE] derived aesKey');
