@@ -58,6 +58,13 @@ async function decryptE2EEEnvelope(env) {
   const kp = await idb.get('e2eeKeyPair');
   if (!kp?.privateJwk) return null;
 
+  const enc = (u8) => btoa(String.fromCharCode(...u8)).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'');
+  const log8 = (label, u8) => console.log('[E2EE]', label, enc(u8.slice(0,8)));
+  
+  log8('epk fp', b64uToBuf(env.epk));
+  log8('salt fp', b64uToBuf(env.salt));
+  console.log('[E2EE] epk len', b64uToBuf(env.epk).length); // should be 65, first byte 0x04
+
   let recipientPriv;
   try {
     recipientPriv = await crypto.subtle.importKey(
@@ -68,6 +75,9 @@ async function decryptE2EEEnvelope(env) {
     console.error('[E2EE] importKey failed (priv):', e);
     throw e;
   }
+
+  const secret = new Uint8Array(secretBits);
+  log8('ECDH secret fp', secret);
 
   // Quick sanity check
   if (!kp?.privateJwk?.d) console.warn('[E2EE] private JWK missing "d"');
@@ -106,6 +116,8 @@ async function decryptE2EEEnvelope(env) {
   );
   console.log('[E2EE] derived aesKey');
   const rawKey = await crypto.subtle.exportKey('raw', aesKey);
+  log8('AES key fp (device)', rawKey);
+  console.log('[E2EE] device pubJWK fp', (kp?.publicJwk?.x||'').slice(0,8)+':' + (kp?.publicJwk?.y||'').slice(0,8));
   const hash = await crypto.subtle.digest('SHA-256', rawKey);
   console.log('[E2EE] key sha256 (first 8 bytes b64u):',
     btoa(String.fromCharCode(...new Uint8Array(hash).slice(0,8))).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'')
