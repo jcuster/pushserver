@@ -21,7 +21,7 @@ self.addEventListener('push', (event) => {
     body: data.body || '',
     icon: data.icon || '/icon-192.png',
     badge: data.badge || '/icon-192.png',
-    data: { url: data.url || '/' }
+    data: { url: data.url || '/pushserver' }
   };
 
   event.waitUntil(self.registration.showNotification(title, options));
