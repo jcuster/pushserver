@@ -116,7 +116,8 @@ async function decryptE2EEEnvelope(env) {
   console.log('[E2EE] epk len', b64uToBuf(env.epk).length); // should be 65, first byte 0x04
   const secret = new Uint8Array(secretBits);
   log8('ECDH secret fp', secret);
-  log8('AES key fp (device)', rawKey);
+  const rawAesKey = new Uint8Array(await crypto.subtle.exportKey('raw', aesKey));
+  log8('AES key fp (device)', rawAesKey);
   console.log('[E2EE] key sha256 (first 8 bytes b64u):',
     btoa(String.fromCharCode(...new Uint8Array(hash).slice(0,8))).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'')
   );
