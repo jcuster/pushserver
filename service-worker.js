@@ -41,6 +41,7 @@ const b64uToBuf = (str='') => {
 };
 
 async function decryptE2EEEnvelope(env) {
+  console.log(env);
   // env = { version, epk, iv, salt, ct } where epk is uncompressed EC point (X9.62)
   if (!env?.epk || !env?.iv || !env?.salt || !env?.ct) return null;
 
