@@ -7,6 +7,71 @@ self.addEventListener('activate', (event) => {
   clients.claim();
 });
 
+// === E2EE helpers (IndexedDB + base64url + decrypt) ===
+const idb = {
+  open() { return new Promise((resolve, reject) => {
+    const req = indexedDB.open('e2ee-db', 1);
+    req.onupgradeneeded = (e) => {
+      const db = e.target.result;
+      if (!db.objectStoreNames.contains('kv')) db.createObjectStore('kv');
+    };
+    req.onsuccess = () => resolve(req.result);
+    req.onerror  = () => reject(req.error);
+  });},
+  async get(key) {
+    const db = await idb.open();
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction('kv');
+      const r = tx.objectStore('kv').get(key);
+      r.onsuccess = () => resolve(r.result);
+      r.onerror   = () => reject(r.error);
+    });
+  }
+};
+
+const b64uToBuf = (str='') => {
+  // base64url -> Uint8Array
+  str = str.replace(/-/g,'+').replace(/_/g,'/');
+  const pad = str.length % 4 ? 4 - (str.length % 4) : 0;
+  if (pad) str += '='.repeat(pad);
+  const bin = atob(str);
+  const buf = new Uint8Array(bin.length);
+  for (let i=0;i<bin.length;i++) buf[i] = bin.charCodeAt(i);
+  return buf;
+};
+
+async function decryptE2EEEnvelope(env) {
+  // env = { version, epk, iv, salt, ct } where epk is uncompressed EC point (X9.62)
+  if (!env?.epk || !env?.iv || !env?.salt || !env?.ct) return null;
+  const kp = await idb.get('e2eeKeyPair');
+  if (!kp?.privateJwk) return null;
+
+  const recipientPriv = await crypto.subtle.importKey(
+    'jwk', kp.privateJwk, { name: 'ECDH', namedCurve: 'P-256' }, false, ['deriveBits']
+  );
+  const senderPub = await crypto.subtle.importKey(
+    'raw', b64uToBuf(env.epk), { name: 'ECDH', namedCurve: 'P-256' }, false, []
+  );
+
+  const secretBits = await crypto.subtle.deriveBits(
+    { name: 'ECDH', public: senderPub }, recipientPriv, 256
+  );
+  const hkdfBase = await crypto.subtle.importKey('raw', secretBits, 'HKDF', false, ['deriveKey']);
+  const aesKey = await crypto.subtle.deriveKey(
+    { name: 'HKDF', hash: 'SHA-256', salt: b64uToBuf(env.salt), info: new Uint8Array([]) },
+    hkdfBase,
+    { name: 'AES-GCM', length: 256 },
+    false,
+    ['decrypt']
+  );
+  const pt = await crypto.subtle.decrypt(
+    { name: 'AES-GCM', iv: b64uToBuf(env.iv) },
+    aesKey,
+    b64uToBuf(env.ct)
+  );
+  return JSON.parse(new TextDecoder().decode(pt));
+}
+
 // Handle incoming Web Push
 self.addEventListener('push', (event) => {
   let data = {};
@@ -16,15 +81,26 @@ self.addEventListener('push', (event) => {
     try { data = { title: 'Push', body: event.data.text() }; } catch (_) { data = { title: 'Push' }; }
   }
 
-  const title = data.title || 'Notification';
-  const options = {
-    body: data.body || '',
-    icon: data.icon || '/icon-192.png',
-    badge: data.badge || '/icon-192.png',
-    data: { url: data.url || '/pushserver' }
-  };
-
-  event.waitUntil(self.registration.showNotification(title, options));
+  event.waitUntil((async () => {
+    // If payload carries an E2EE envelope, decrypt it to {title, body, icon, badge, url}
+    if (data && data.e2ee) {
+      try {
+        const inner = await decryptE2EEEnvelope(data.e2ee);
+        if (inner) data = inner;
+      } catch (e) {
+        // If decryption fails, fall back to a minimal notification that surfaces the error.
+        data = { title: 'Encrypted message', body: 'Unable to decrypt on device.' };
+      }
+    }
+    const title = data.title || 'Notification';
+    const options = {
+      body: data.body || '',
+      icon: data.icon || '/icon-192.png',
+      badge: data.badge || '/icon-192.png',
+      data: { url: data.url || '/pushserver' }
+    };
+    await self.registration.showNotification(title, options);
+  })());
 });
 
 self.addEventListener('notificationclick', (event) => {

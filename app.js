@@ -42,6 +42,63 @@ document.querySelectorAll('button.copy').forEach(btn => {
 // Init from localStorage
 inputVapid.value = localStorage.getItem('vapidPublicKey') || '';
 
+// === E2EE (app-layer) helpers: minimal KV store in IndexedDB ===
+const idb = {
+  open() {
+    return new Promise((resolve, reject) => {
+      const req = indexedDB.open('e2ee-db', 1);
+      req.onupgradeneeded = (e) => {
+        const db = e.target.result;
+        if (!db.objectStoreNames.contains('kv')) db.createObjectStore('kv');
+      };
+      req.onsuccess = () => resolve(req.result);
+      req.onerror = () => reject(req.error);
+    });
+  },
+  async get(key) {
+    const db = await idb.open();
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction('kv');
+      const r = tx.objectStore('kv').get(key);
+      r.onsuccess = () => resolve(r.result);
+      r.onerror = () => reject(r.error);
+    });
+  },
+  async set(key, val) {
+    const db = await idb.open();
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction('kv', 'readwrite');
+      const r = tx.objectStore('kv').put(val, key);
+      r.onsuccess = () => resolve();
+      r.onerror = () => reject(r.error);
+    });
+  }
+};
+
+// Create & persist an ECDH P-256 keypair for app-layer E2EE, if missing.
+async function ensureE2EEKeys() {
+  let kp = await idb.get('e2eeKeyPair');
+  if (!kp) {
+    const keyPair = await crypto.subtle.generateKey(
+      { name: 'ECDH', namedCurve: 'P-256' },
+      /* extractable */ true,
+      ['deriveBits', 'deriveKey']
+    );
+    const [privateJwk, publicJwk] = await Promise.all([
+      crypto.subtle.exportKey('jwk', keyPair.privateKey),
+      crypto.subtle.exportKey('jwk', keyPair.publicKey),
+    ]);
+    kp = { privateJwk, publicJwk };
+    await idb.set('e2eeKeyPair', kp);
+  }
+  return kp;
+}
+
+async function getAppPublicKeyJwk() {
+  const kp = await ensureE2EEKeys();
+  return kp.publicJwk; // JWK with kty: "EC", crv: "P-256", x, y
+}
+
 btnSaveKey.addEventListener('click', () => {
   localStorage.setItem('vapidPublicKey', inputVapid.value.trim());
   $status.key.textContent = inputVapid.value ? 'Saved' : '';
@@ -145,6 +202,14 @@ async function renderSubscription(sub) {
   if (!sub) return;
 
   const json = sub.toJSON();
+  // Inject device app-layer public key so the server can encrypt to this device:
+  try {
+    const appPub = await getAppPublicKeyJwk();
+    json.appPublicKey = appPub;
+    json.appPublicKeyFormat = 'JWK-P-256e
+  } catch (e) {
+    console.warn('E2EE public key unavailable:', e);
+  }
   show($out.json, JSON.stringify(json, null, 2));
 }
 
@@ -153,6 +218,8 @@ async function renderSubscription(sub) {
   if ('serviceWorker' in navigator) {
     const reg = await navigator.serviceWorker.getRegistration();
     if (reg) $status.sw.innerHTML = '<span class="ok">registered</span>';
+    // Ensure keys exist before showing JSON so the public key appears immediately.
+    try { await ensureE2EEKeys(); } catch {}
     renderSubscription();
   }
 })();
