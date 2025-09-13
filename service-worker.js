@@ -43,6 +43,17 @@ const b64uToBuf = (str='') => {
 async function decryptE2EEEnvelope(env) {
   // env = { version, epk, iv, salt, ct } where epk is uncompressed EC point (X9.62)
   if (!env?.epk || !env?.iv || !env?.salt || !env?.ct) return null;
+
+  // Decode and validate shapes
+  const epk = b64uToBuf(env.epk);
+  const iv = b64uToBuf(env.iv);
+  const salt = b64uToBuf(env.salt);
+  const ct = b64uToBuf(env.ct);
+  if (epk.length !== 65 || epk[0] !== 0x04) throw new Error('bad-epk-x962');
+  if (iv.length !== 12) throw new Error('bad-iv-len');
+  if (salt.length !== 16) throw new Error('bad-salt-len');
+  if (ct.length < 17) throw new Error('bad-ct-len'); // needs >= 1 + 16 tag
+
   const kp = await idb.get('e2eeKeyPair');
   if (!kp?.privateJwk) return null;
 
