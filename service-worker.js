@@ -58,20 +58,44 @@ async function decryptE2EEEnvelope(env) {
   const kp = await idb.get('e2eeKeyPair');
   if (!kp?.privateJwk) return null;
 
-  const recipientPriv = await crypto.subtle.importKey(
-    'jwk', kp.privateJwk, { name: 'ECDH', namedCurve: 'P-256' }, false, ['deriveBits']
-  );
+  let recipientPriv;
+  try {
+    recipientPriv = await crypto.subtle.importKey(
+      'jwk', kp.privateJwk, { name: 'ECDH', namedCurve: 'P-256' }, false, ['deriveBits']
+    );
+    console.log('[E2EE] imported recipient private key');
+  } catch (e) {
+    console.error('[E2EE] importKey failed (priv):', e);
+    throw e;
+  }
 
   // Quick sanity check
   if (!kp?.privateJwk?.d) console.warn('[E2EE] private JWK missing "d"');
 
-  const senderPub = await crypto.subtle.importKey(
-    'raw', b64uToBuf(env.epk), { name: 'ECDH', namedCurve: 'P-256' }, false, []
-  );
+  let senderPub;
+  try {
+    senderPub = await crypto.subtle.importKey(
+      'raw', epk, { name: 'ECDH', namedCurve: 'P-256' }, false, []
+    );
+    console.log('[E2EE] imported sender pub');
+  } catch (e) {
+    console.error('[E2EE] importKey failed (epk):', e);
+    throw e;
+  }
 
-  const secretBits = await crypto.subtle.deriveBits(
-    { name: 'ECDH', public: senderPub }, recipientPriv, 256
-  );
+  let secretBits;
+  try {
+    secretBits = await crypto.subtle.deriveBits(
+      { name: 'ECDH', public: senderPub },
+      recipientPriv,
+      256
+    );
+    console.log('[E2EE] derived secretBits');
+  } catch (e) {
+    console.error('[E2EE] deriveBits failed:', e);
+    throw e;
+  }
+
   const hkdfBase = await crypto.subtle.importKey('raw', secretBits, 'HKDF', false, ['deriveKey']);
   const aesKey = await crypto.subtle.deriveKey(
     { name: 'HKDF', hash: 'SHA-256', salt: b64uToBuf(env.salt), info: new Uint8Array([]) },
@@ -80,6 +104,7 @@ async function decryptE2EEEnvelope(env) {
     false,
     ['decrypt']
   );
+  console.log('[E2EE] derived aesKey');
   const rawKey = await crypto.subtle.exportKey('raw', aesKey);
   const hash = await crypto.subtle.digest('SHA-256', rawKey);
   console.log('[E2EE] key sha256 (first 8 bytes b64u):',
