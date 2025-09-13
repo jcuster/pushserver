@@ -126,8 +126,26 @@ async function decryptE2EEEnvelope(env) {
     aesKey,
     b64uToBuf(env.ct)
   );
-  console.log(pt)
-  return JSON.parse(new TextDecoder().decode(pt));
+  const u8 = new Uint8Array(pt);
+  // Log a short fingerprint of the plaintext bytes
+  const b64u = (b) => btoa(String.fromCharCode(...b)).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'');
+  console.log('[E2EE] pt len', u8.length, 'pt fp', b64u(u8.slice(0,16)));
+
+  // Decode text (non-fatal so we can inspect if there are odd bytes)
+  let txt = new TextDecoder('utf-8', { fatal: false }).decode(u8);
+  // Strip BOM and trim whitespace
+  txt = txt.replace(/^\uFEFF/, '').trim();
+  console.log('[E2EE] pt preview', txt.slice(0,120));
+
+  // Try parse as object; if it’s a JSON string, parse twice
+  try {
+    const first = JSON.parse(txt);
+    return (typeof first === 'string') ? JSON.parse(first) : first;
+  } catch (e) {
+    console.error('[E2EE] JSON.parse failed; showing raw text', e);
+    // Be forgiving: treat it as a plain message body
+    return { title: 'Encrypted message', body: txt.slice(0,140) };
+  }
 }
 
 // Handle incoming Web Push
