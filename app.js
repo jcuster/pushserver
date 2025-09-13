@@ -206,7 +206,7 @@ async function renderSubscription(sub) {
   try {
     const appPub = await getAppPublicKeyJwk();
     json.appPublicKey = appPub;
-    json.appPublicKeyFormat = 'JWK-P-256e
+    json.appPublicKeyFormat = 'JWK-P-256e'
   } catch (e) {
     console.warn('E2EE public key unavailable:', e);
   }
